@@ -15,23 +15,14 @@
     }
     html,body{height:100%;}
     *{box-sizing:border-box}
-    html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);overflow:hidden;font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial}
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial}
 
-    /* full-screen canvas for particle glows */
     canvas#glowCanvas{position:fixed;inset:0;pointer-events:none;mix-blend-mode:screen;filter:blur(14px);z-index:0}
 
-    /* subtle noise layer */
-    .noise{
-      position:fixed;inset:0;z-index:0;opacity:0.04;pointer-events:none;background-image:radial-gradient(rgba(255,255,255,0.02) 1px, transparent 1px);background-size:3px 3px;}
+    .noise{position:fixed;inset:0;z-index:0;opacity:0.04;pointer-events:none;background-image:radial-gradient(rgba(255,255,255,0.02) 1px, transparent 1px);background-size:3px 3px;}
 
-    /* mouse-follow glow using CSS radial gradient; updates via JS --mx and --my */
-    body::before{
-      content:"";position:fixed;left:0;top:0;right:0;bottom:0;z-index:1;pointer-events:none;
-      background:radial-gradient(closest-side, rgba(255,255,255,0.08) 0%, transparent 40%);
-      mix-blend-mode:screen;opacity:1;transition:opacity 0.2s linear;
-      will-change:background;}
+    body::before{content:"";position:fixed;left:0;top:0;right:0;bottom:0;z-index:1;pointer-events:none;background:radial-gradient(closest-side, rgba(255,255,255,0.08) 0%, transparent 40%);mix-blend-mode:screen;opacity:1;transition:opacity 0.2s linear;will-change:background;}
 
-    /* layout */
     .wrap{position:relative;z-index:2;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:48px;text-align:center}
     .card{max-width:880px;padding:48px;border-radius:16px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));backdrop-filter:blur(6px);box-shadow:0 6px 40px rgba(0,0,0,0.6);}
 
@@ -39,14 +30,15 @@
     p{margin:12px 0;color:rgba(233,233,238,0.92);font-size:clamp(14px,1.8vw,18px);line-height:1.6}
     .sig{margin-top:18px;font-style:italic;font-weight:700;color:rgba(233,233,238,0.88)}
 
-    /* tiny accent underline */
     .logoLine{height:6px;width:140px;margin:26px auto 0;border-radius:999px;background:linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.01));box-shadow:0 0 24px rgba(255,255,255,0.02), inset 0 -8px 30px rgba(0,0,0,0.4)}
 
-    /* no scrollbar ever */
-    ::-webkit-scrollbar{display:none}
-
-    /* responsive tweaks */
-    @media (max-width:560px){.card{padding:28px}}
+    @media (max-width:560px){
+      body{overflow-y:auto;}
+      .wrap{padding:24px 12px;align-items:flex-start;justify-content:flex-start;}
+      .card{padding:0;background:none;box-shadow:none;border-radius:0;backdrop-filter:none;text-align:justify;}
+      h1{text-align:center;margin-top:24px;}
+      p,.sig{text-align:justify;}
+    }
   </style>
 </head>
 <body>
@@ -79,23 +71,19 @@
   </div>
 
   <script>
-    // Canvas particle glow system + mouse-follow color pulse
     const canvas = document.getElementById('glowCanvas');
     const ctx = canvas.getContext('2d');
     let W = canvas.width = innerWidth;
     let H = canvas.height = innerHeight;
 
-    // config
-    const PARTICLE_COUNT = Math.round((W*H)/(16000)); // scale with screen
+    const PARTICLE_COUNT = Math.round((W*H)/(16000));
     const particles = [];
     let globalHue = Math.random()*360;
 
     function rand(min,max){return Math.random()*(max-min)+min}
 
     class Particle{
-      constructor(){
-        this.reset(true);
-      }
+      constructor(){this.reset(true);}
       reset(init){
         this.x = rand(0,W);
         this.y = rand(0,H);
@@ -112,10 +100,7 @@
         this.x += this.vx * dt;
         this.y += this.vy * dt;
         this.age += dt*0.01;
-        // gentle pulsing
         this.size = this.baseSize * (0.6 + 0.4*Math.sin(this.age*0.8));
-
-        // wrap edges
         if(this.x < -200 || this.x > W+200 || this.y < -200 || this.y > H+200 || this.age>this.life){
           this.reset();
         }
@@ -132,111 +117,46 @@
       }
     }
 
-    // create particles
     function initParticles(){
       particles.length = 0;
       for(let i=0;i<PARTICLE_COUNT;i++)particles.push(new Particle());
     }
     initParticles();
 
-    // mouse-follow glow
     const mouse = {x:W/2,y:H/2,active:false};
-    window.addEventListener('pointermove', e=>{
-      mouse.x = e.clientX; mouse.y = e.clientY; mouse.active = true;
-    });
-    window.addEventListener('pointerdown', ()=>mouse.active=true);
-    window.addEventListener('pointerup', ()=>mouse.active=false);
+    window.addEventListener('pointermove', e=>{mouse.x=e.clientX;mouse.y=e.clientY;mouse.active=true;});
 
-    // update loop
     let last = performance.now();
     function loop(now){
       const dt = Math.min(48, now - last);
       last = now;
       ctx.clearRect(0,0,W,H);
-
-      // slowly rotate global hue
       globalHue = (globalHue + dt*0.004) % 360;
-
-      // draw particles
-      for(const p of particles){
-        p.h = (p.h + dt*0.002) % 360; // slight per-particle shift
-        p.step(dt);
-        p.draw(ctx);
-      }
-
-      // mouse glow overlay (drawn on top of particles)
-      // make a soft big glow at mouse
-      const mx = mouse.x || W/2;
-      const my = mouse.y || H/2;
-      const mSize = 160 + Math.abs(Math.sin(now*0.002))*220;
-      const mh = (globalHue + 60 + Math.sin(now*0.001)*120 + mx*0.02) % 360;
-      const mg = ctx.createRadialGradient(mx,my,0,mx,my,mSize);
-      mg.addColorStop(0, `hsla(${mh},100%,60%,0.18)`);
-      mg.addColorStop(0.3, `hsla(${mh},90%,45%,0.08)`);
-      mg.addColorStop(1, `hsla(${mh},80%,10%,0)`);
-      ctx.fillStyle = mg;
-      ctx.fillRect(mx-mSize, my-mSize, mSize*2, mSize*2);
-
+      for(const p of particles){p.h=(p.h+dt*0.002)%360;p.step(dt);p.draw(ctx);} 
+      const mx=mouse.x||W/2,my=mouse.y||H/2;
+      const mSize=160+Math.abs(Math.sin(now*0.002))*220;
+      const mh=(globalHue+60+Math.sin(now*0.001)*120+mx*0.02)%360;
+      const mg=ctx.createRadialGradient(mx,my,0,mx,my,mSize);
+      mg.addColorStop(0,`hsla(${mh},100%,60%,0.18)`);
+      mg.addColorStop(0.3,`hsla(${mh},90%,45%,0.08)`);
+      mg.addColorStop(1,`hsla(${mh},80%,10%,0)`);
+      ctx.fillStyle=mg;
+      ctx.fillRect(mx-mSize,my-mSize,mSize*2,mSize*2);
       requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
 
-    // resize handling
-    window.addEventListener('resize', ()=>{
-      W = canvas.width = innerWidth;
-      H = canvas.height = innerHeight;
-      // recalc particle count lightly
-      // (we won't aggressively remove/add to avoid visual pop)
-      initParticles();
-    });
+    window.addEventListener('resize',()=>{W=canvas.width=innerWidth;H=canvas.height=innerHeight;initParticles();});
 
-    // subtle color tween for CSS pseudo-gradient: we map globalHue -> CSS filter by updating body::before's background via CSS variables
-    (function cssHueLoop(){
-      function tick(){
-        // pick a hue based on globalHue, but offset and map to rgba by building a radial gradient string
-        const h = (globalHue + 20) % 360;
-        // create a radial gradient color with slight transparency and a moving center based on mouse
-        const cx = (mouse.x || W/2) + Math.sin(performance.now()*0.001)*80;
-        const cy = (mouse.y || H/2) + Math.cos(performance.now()*0.001)*80;
-        // use a css variable trick by setting a data attribute on body with live gradient
-        // but to keep perf we only update a few times per second
-      }
-      setInterval(()=>{
-        const h = Math.round(globalHue);
-        document.documentElement.style.setProperty('--accent-h', h);
-        // update an inline style for the pseudo-element by injecting a tiny <style> node
-        const cx = (mouse.x || W/2);
-        const cy = (mouse.y || H/2);
-        const radius = 380 + Math.abs(Math.sin(performance.now()*0.001))*220;
-        const color = `hsla(${(h+40)%360},92%,60%,0.12)`;
-        // use CSS paint via body.style.backgroundImage? we will update a CSS variable used by ::before via style element
-        document.body.style.setProperty('--mouse-x', cx + 'px');
-        document.body.style.setProperty('--mouse-y', cy + 'px');
-        document.body.style.setProperty('--mouse-radius', radius + 'px');
-        // directly set the pseudo-gradient by adding a data attr (read in CSS via attr() isn't allowed for background), so instead tweak body's before using inline style hack:
-        // We'll attach/update a tiny style tag that controls body::before background with the latest position and color.
-        let s = document.getElementById('live-pseudo-style');
-        if(!s){ s = document.createElement('style'); s.id = 'live-pseudo-style'; document.head.appendChild(s); }
-        s.textContent = `body::before{background: radial-gradient(circle at ${cx}px ${cy}px, ${color} 0%, rgba(0,0,0,0) 45%); filter: blur(36px); opacity:0.92;}`;
-      },120);
-    })();
-
-    // accessibility: pause animation if user prefers reduced motion
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    if(mq.matches){
-      // stop the animation loop by clearing particles and making canvas blank
-      particles.length = 0;
-      ctx.clearRect(0,0,W,H);
-    }
-
-    // helpful: allow click to regenerate layout/colors
-    window.addEventListener('dblclick', ()=>{
-      globalHue = Math.random()*360;
-      for(const p of particles) p.reset();
-    });
-
-    // prevent accidental text selection or context menu weirdness
-    window.addEventListener('contextmenu', e=>e.preventDefault());
+    (function cssHueLoop(){setInterval(()=>{
+      const h=Math.round(globalHue);
+      document.documentElement.style.setProperty('--accent-h',h);
+      const cx=(mouse.x||W/2);const cy=(mouse.y||H/2);
+      const color=`hsla(${(h+40)%360},92%,60%,0.12)`;
+      let s=document.getElementById('live-pseudo-style');
+      if(!s){s=document.createElement('style');s.id='live-pseudo-style';document.head.appendChild(s);} 
+      s.textContent=`body::before{background: radial-gradient(circle at ${cx}px ${cy}px, ${color} 0%, rgba(0,0,0,0) 45%); filter: blur(36px); opacity:0.92;}`;
+    },120);})();
   </script>
 </body>
 </html>
